@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Shadowboxing</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; }
+        #game-area { width: 400px; margin: 20px auto; padding: 20px; border: 1px solid #ccc; }
+        .controls button { margin: 5px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        .message { margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>SHADOWBOXING</h1>
+    <div id="game-area">
+        <p>You and the Computer take turns pointing and looking in directions.</p>
+        <p>If the look direction matches the point direction, that's a Hit. Get 3 hits in a row to win!</p>
+
+        <button id="start-button">Press to Start</button>
+
+        <div id="game-display" style="display: none;">
+            <p>Your combo: <span id="combo-player">0</span> | Computer combo: <span id="combo-computer">0</span></p>
+            <p id="turn-info"></p>
+
+            <div class="controls">
+                <p id="prompt-text">Choose a direction:</p>
+                <button id="up-button" data-dir="up">UP</button><br>
+                <button id="left-button" data-dir="left">LEFT</button>
+                <button id="right-button" data-dir="right">RIGHT</button><br>
+                <button id="down-button" data-dir="down">DOWN</button>
+            </div>
+
+            <div class="message" id="result-message"></div>
+            <div class="message" id="match-message"></div>
+        </div>
+
+        <button id="quit-button" style="display: none;">Play Again</button>
+    </div>
+
+    <script>
+        // --- Game State Variables ---
+let comboPlayer = 0;
+let comboComputer = 0;
+let turn = "player"; // player starts by pointing first
+let lastPlayerDir = null;
+let lastComputerDir = null;
+const directions = ["up", "down", "left", "right"];
+
+// --- DOM Element References ---
+const startButton = document.getElementById('start-button');
+const quitButton = document.getElementById('quit-button');
+const gameDisplay = document.getElementById('game-display');
+const comboPlayerEl = document.getElementById('combo-player');
+const comboComputerEl = document.getElementById('combo-computer');
+const turnInfoEl = document.getElementById('turn-info');
+const promptTextEl = document.getElementById('prompt-text');
+const resultMessageEl = document.getElementById('result-message');
+const matchMessageEl = document.getElementById('match-message');
+const controlButtons = document.querySelectorAll('.controls button[data-dir]');
+
+// --- Helper Functions ---
+
+/** Updates the displayed combo scores. */
+function updateDisplay() {
+    comboPlayerEl.textContent = comboPlayer;
+    comboComputerEl.textContent = comboComputer;
+}
+
+/** Enables or disables the direction buttons. */
+function enableButtons(enable) {
+    controlButtons.forEach(btn => btn.disabled = !enable);
+}
+
+/** Utility function to pause the game flow. */
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** Gets a random direction for the computer, ensuring it's not the last direction. */
+function getComputerDirection(lastDir) {
+    let dir;
+    do {
+        dir = directions[Math.floor(Math.random() * directions.length)];
+    } while (dir === lastDir);
+    return dir;
+}
+
+/**
+ * Handles the player's choice of direction via button click.
+ * Returns a Promise that resolves with the chosen direction when a valid button is clicked.
+ */
+function getPlayerDirection(action, lastDir) {
+    promptTextEl.textContent = `${action}. Choose a direction. (Cannot be ${lastDir || 'none'})`;
+    matchMessageEl.textContent = "";
+    enableButtons(true);
+
+    return new Promise(resolve => {
+        const handler = (event) => {
+            const chosenDir = event.target.dataset.dir;
+
+            if (chosenDir === lastDir) {
+                matchMessageEl.textContent = "You cannot choose the same direction as last time. Try again.";
+                return;
+            }
+
+            // Clean up listener and resolve the direction
+            controlButtons.forEach(btn => btn.removeEventListener('click', handler));
+            matchMessageEl.textContent = "";
+            enableButtons(false);
+            resolve(chosenDir);
+        };
+
+        controlButtons.forEach(btn => btn.addEventListener('click', handler));
+    });
+}
+
+// --- Game Turn Handlers ---
+
+async function handlePlayerTurn() {
+    turnInfoEl.textContent = "Your turn to point.";
+    
+    // 1. Player Points
+    let pointDir = await getPlayerDirection("Point!", lastPlayerDir);
+    lastPlayerDir = pointDir;
+
+    // 2. Computer Looks
+    let lookDir = getComputerDirection(lastComputerDir);
+    lastComputerDir = lookDir;
+
+    resultMessageEl.innerHTML = `You pointed <strong>${pointDir.toUpperCase()}</strong><br>Computer looked <strong>${lookDir.toUpperCase()}</strong>`;
+    await sleep(200);
+
+    // 3. Check for Hit/Miss
+    if (lookDir === pointDir) {
+        matchMessageEl.textContent = "Hit!";
+        comboPlayer++;
+        comboComputer = 0;
+        await sleep(1000);
+    } else {
+        matchMessageEl.textContent = "Miss!";
+        comboPlayer = 0;
+        turn = "computer"; // Switch turn on miss
+        await sleep(1000);
+    }
+}
+
+async function handleComputerTurn() {
+    turnInfoEl.textContent = "Computer's turn to point.";
+    await sleep(200);
+
+    // 1. Computer Points
+    let pointDir = getComputerDirection(lastComputerDir);
+    lastComputerDir = pointDir;
+    
+    // 2. Player Looks
+    let lookDir = await getPlayerDirection("Look!", lastPlayerDir);
+    lastPlayerDir = lookDir;
+
+    resultMessageEl.innerHTML = `Computer pointed <strong>${pointDir.toUpperCase()}</strong><br>You looked <strong>${lookDir.toUpperCase()}</strong>`;
+    await sleep(200);
+
+    // 3. Check for Hit/Miss
+    if (lookDir === pointDir) {
+        matchMessageEl.textContent = "Computer Hit!";
+        comboComputer++;
+        comboPlayer = 0;
+        await sleep(1000);
+    } else {
+        matchMessageEl.textContent = "Computer Missed!";
+        comboComputer = 0;
+        turn = "player"; // Switch turn on miss
+        await sleep(1000);
+    }
+}
+
+// --- Main Game Loop ---
+
+async function shadowboxing() {
+    // Initialization/Reset
+    comboPlayer = 0;
+    comboComputer = 0;
+    turn = "player";
+    lastPlayerDir = null;
+    lastComputerDir = null;
+    startButton.style.display = 'none';
+    quitButton.style.display = 'none';
+    gameDisplay.style.display = 'block';
+    resultMessageEl.textContent = "";
+    matchMessageEl.textContent = "";
+    resultMessageEl.style.display = 'none'; // Hide at start
+
+    updateDisplay();
+    enableButtons(false);
+
+    // Game Loop
+    while (comboPlayer < 3 && comboComputer < 3) {
+        updateDisplay();
+        resultMessageEl.textContent = "";
+        matchMessageEl.textContent = "";
+
+        if (turn === "player") {
+            await handlePlayerTurn();
+        } else {
+            await handleComputerTurn();
+        }
+    }
+
+    // Game Over
+    gameDisplay.style.display = 'none';
+    const finalMessage = comboPlayer === 3 ? "🏆 3 Hits! You won!" : "😭 3 Hits! You lose!";
+    resultMessageEl.textContent = finalMessage;
+    resultMessageEl.style.display = 'block';
+    quitButton.style.display = 'block';
+    turnInfoEl.textContent = "";
+}
+
+// --- Event Listeners ---
+startButton.addEventListener('click', shadowboxing);
+
+// Allow pressing Enter key to start (like the original Python code)
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && startButton.style.display !== 'none') {
+        shadowboxing();
+    }
+});
+
+// "Play Again" button simply reloads the page to reset the state
+quitButton.addEventListener('click', () => {
+    window.location.reload();
+});
+    </script>
+</body>
+</html>
